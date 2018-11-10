@@ -1,0 +1,343 @@
+Main Activity:- Where we gone to user the database in the project
+
+        package com.techgtstudio.apple;
+
+import android.arch.lifecycle.Observer;
+import android.arch.lifecycle.ViewModelProviders;
+import android.content.Intent;
+import android.support.annotation.Nullable;
+import android.support.design.widget.FloatingActionButton;
+import android.support.v7.app.AppCompatActivity;
+import android.os.Bundle;
+import android.support.v7.widget.LinearLayoutManager;
+import android.support.v7.widget.RecyclerView;
+import android.view.View;
+import android.widget.Toast;
+
+import com.techgtstudio.apple.comp.WordListAdapter;
+
+import java.util.List;
+
+public class MainActivity extends AppCompatActivity {
+    private WordViewModel mWordViewModel;
+
+    public static final int NEW_WORD_ACTIVITY_REQUEST_CODE = 1;
+
+    @Override
+    protected void onCreate(Bundle savedInstanceState) {
+        super.onCreate(savedInstanceState);
+        setContentView(R.layout.activity_main);
+
+
+        RecyclerView recyclerView = findViewById(R.id.recyclerview);
+        final WordListAdapter adapter = new WordListAdapter(this);
+        recyclerView.setAdapter(adapter);
+        recyclerView.setLayoutManager(new LinearLayoutManager(this));
+
+        mWordViewModel = ViewModelProviders.of(this).get(WordViewModel.class);
+
+        mWordViewModel.getAllWords().observe(this, new Observer<List<Word>>() {
+            @Override
+            public void onChanged(@Nullable final List<Word> words) {
+                // Update the cached copy of the words in the adapter.
+                adapter.setWords(words);
+            }
+        });
+
+        FloatingActionButton fab = findViewById(R.id.fab);
+        fab.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View view) {
+                Intent intent = new Intent(MainActivity.this, NewWordActivity.class);
+                startActivityForResult(intent, NEW_WORD_ACTIVITY_REQUEST_CODE);
+            }
+        });
+    }
+
+    public void onActivityResult(int requestCode, int resultCode, Intent data) {
+        super.onActivityResult(requestCode, resultCode, data);
+
+        if (requestCode == NEW_WORD_ACTIVITY_REQUEST_CODE && resultCode == RESULT_OK) {
+            Word word = new Word(data.getStringExtra(NewWordActivity.EXTRA_REPLY));
+            mWordViewModel.insert(word);
+        } else {
+            Toast.makeText(
+                    getApplicationContext(),
+                    R.string.empty_not_saved,
+                    Toast.LENGTH_LONG).show();
+        }
+    }
+}
+
+/*******************************************************************************************************************/
+
+New Word Activity to interact with or add the data to the Database:
+package com.techgtstudio.apple;
+
+import android.content.Intent;
+import android.support.v7.app.AppCompatActivity;
+import android.os.Bundle;
+import android.text.TextUtils;
+import android.view.View;
+import android.widget.Button;
+import android.widget.EditText;
+
+public class NewWordActivity extends AppCompatActivity {
+
+    public static final String EXTRA_REPLY = "com.example.android.wordlistsql.REPLY";
+
+    private EditText mEditWordView;
+
+    @Override
+    protected void onCreate(Bundle savedInstanceState) {
+        super.onCreate(savedInstanceState);
+        setContentView(R.layout.activity_new_word);
+        mEditWordView = findViewById(R.id.edit_word);
+
+        final Button button = findViewById(R.id.button_save);
+        button.setOnClickListener(new View.OnClickListener() {
+            public void onClick(View view) {
+                Intent replyIntent = new Intent();
+                if (TextUtils.isEmpty(mEditWordView.getText())) {
+                    setResult(RESULT_CANCELED, replyIntent);
+                } else {
+                    String word = mEditWordView.getText().toString();
+                    replyIntent.putExtra(EXTRA_REPLY, word);
+                    setResult(RESULT_OK, replyIntent);
+                }
+                finish();
+            }
+        });
+    }
+}
+
+/**********************************************************************************************************************/
+
+Model class which is used store user data to it.
+As specific it is the Table in the Room api...................
+
+
+
+
+package com.techgtstudio.apple;
+
+import android.arch.persistence.room.ColumnInfo;
+import android.arch.persistence.room.Entity;
+import android.arch.persistence.room.PrimaryKey;
+import android.support.annotation.NonNull;
+
+@Entity(tableName = "word_table")
+
+public class Word {
+
+
+
+   // @PrimaryKey(autoGenerate = true)
+   // private int id;
+
+    @PrimaryKey
+    @NonNull
+    @ColumnInfo(name = "word")
+    private String mWord;
+
+    public Word(@NonNull String word) {this.mWord = word;}
+
+    public String getWord(){return this.mWord;}
+}
+
+
+/******************************************************************************************************************/
+  The main Dao interface used for CURD operation in the database using Dao Implementation
+  @Dao must be interface or abstract class.......
+  
+  
+package com.techgtstudio.apple;
+
+import android.arch.lifecycle.LiveData;
+import android.arch.persistence.room.Dao;
+import android.arch.persistence.room.Insert;
+import android.arch.persistence.room.Query;
+
+import java.util.List;
+
+@Dao
+public interface WordDao {
+
+
+    //@Delete
+    //@Update
+
+    @Insert
+    void insert(Word word);
+
+    @Query("DELETE FROM word_table")
+    void deleteAll();
+
+    @Query("SELECT * from word_table ORDER BY word ASC")
+   // List<Word> getAllWords(); not used to observe data change and update UI
+    LiveData<List<Word>> getAllWords();
+
+    /*
+    * p: When inserting data, you can provide a conflict strategy.
+
+In this codelab, you do not need a conflict strategy, because the word is your primary key, and the default SQL behavior is ABORT, so that you cannot insert two items with the same primary key into the database.
+
+If the table has more than one column, you can use
+
+@Insert(onConflict = OnConflictStrategy.REPLACE)
+
+to replace a row.
+*/
+
+}
+
+This the database in Room persistance api...
+
+
+
+package com.techgtstudio.apple;
+
+import android.arch.persistence.db.SupportSQLiteDatabase;
+import android.arch.persistence.room.Database;
+import android.arch.persistence.room.Room;
+import android.arch.persistence.room.RoomDatabase;
+import android.content.Context;
+import android.os.AsyncTask;
+import android.support.annotation.NonNull;
+
+
+@Database(entities = {Word.class}, version = 1)
+public abstract class WordRoomDatabase extends RoomDatabase {
+
+    public abstract WordDao wordDao();
+
+    private static volatile WordRoomDatabase INSTANCE;
+
+    static WordRoomDatabase getDatabase(final Context context) {
+        if (INSTANCE == null) {
+            synchronized (WordRoomDatabase.class) {
+                if (INSTANCE == null) {
+                    INSTANCE = Room.databaseBuilder(context.getApplicationContext(),
+                            WordRoomDatabase.class, "word_database").addCallback(sRoomDatabaseCallback)
+                            .build();
+
+                }
+            }
+        }
+        return INSTANCE;
+    }
+    private static RoomDatabase.Callback sRoomDatabaseCallback =
+            new RoomDatabase.Callback(){
+
+                @Override
+                public void onOpen (@NonNull SupportSQLiteDatabase db){
+                    super.onOpen(db);
+                    new PopulateDbAsync(INSTANCE).execute();
+                }
+            };
+
+    private static class PopulateDbAsync extends AsyncTask<Void, Void, Void> {
+
+        private final WordDao mDao;
+
+        PopulateDbAsync(WordRoomDatabase db) {
+            mDao = db.wordDao();
+        }
+
+        @Override
+        protected Void doInBackground(final Void... params) {
+            mDao.deleteAll();
+            Word word = new Word("Hello");
+            mDao.insert(word);
+            word = new Word("World");
+            mDao.insert(word);
+            return null;
+        }
+    }
+}
+
+/******************************************************************************************************/
+
+This is the viewModel used for callback on data change in  the database
+
+
+package com.techgtstudio.apple;
+
+import android.app.Application;
+import android.arch.lifecycle.AndroidViewModel;
+import android.arch.lifecycle.LiveData;
+import android.support.annotation.NonNull;
+
+import java.util.List;
+
+public class WordViewModel extends AndroidViewModel {
+
+    private WordRepository mRepository;
+    private LiveData<List<Word>> mAllWords;
+
+    public WordViewModel(@NonNull Application application) {
+        super(application);
+
+        mRepository = new WordRepository(application);
+        mAllWords = mRepository.getAllWords();
+    }
+
+    LiveData<List<Word>> getAllWords() { return mAllWords; }
+
+    public void insert(Word word) { mRepository.insert(word); }
+
+}
+/***************************************************************************************************************/
+
+This is the basic repository used to interact with database and UI 
+
+
+package com.techgtstudio.apple;
+
+import android.app.Application;
+import android.arch.lifecycle.LiveData;
+import android.os.AsyncTask;
+
+import java.util.List;
+
+public class WordRepository {
+
+    private WordDao mWordDao;
+    private LiveData<List<Word>> mAllWords;
+
+    WordRepository(Application application) {
+        WordRoomDatabase db = WordRoomDatabase.getDatabase(application);
+
+        mWordDao = db.wordDao();
+        mAllWords = mWordDao.getAllWords();
+
+
+    }
+    LiveData<List<Word>> getAllWords() {
+        return mAllWords;
+    }
+
+
+    public void insert (Word word) {
+
+        new insertAsyncTask(mWordDao).execute(word);
+
+    }
+
+    private static class insertAsyncTask extends AsyncTask<Word, Void, Void> {
+
+        private WordDao mAsyncTaskDao;
+
+        insertAsyncTask(WordDao dao) {
+            mAsyncTaskDao = dao;
+        }
+
+        @Override
+        protected Void doInBackground(final Word... params) {
+            mAsyncTaskDao.insert(params[0]);
+            return null;
+        }
+    }
+}
+
+
